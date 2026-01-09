@@ -14,7 +14,7 @@ RSS_URLS = [
 ]
 PODCAST_NAME = "我的车载早报"
 # 记得修改下面的用户名！
-BASE_URL = "https://your_github_username.github.io/my-daily-podcast"
+BASE_URL = "https://secret2030.github.io/my-daily-podcast"
 
 # 使用 SiliconFlow (兼容 OpenAI SDK)
 client = OpenAI(
