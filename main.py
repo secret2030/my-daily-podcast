@@ -84,7 +84,7 @@ async def run_tts(text, filename):
     print("正在生成语音...")
     # zh-CN-YunxiNeural 是非常自然的男声
     # zh-CN-XiaoxiaoNeural 是非常自然的女声
-    communicate = edge_tts.Communicate(text, "zh-CN-YunxiNeural")
+    communicate = edge_tts.Communicate(text, "zh-CN-YunjianNeural")
     await communicate.save(filename)
 
 def update_rss_feed(audio_filename, title, pub_date):
