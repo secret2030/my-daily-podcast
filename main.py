@@ -6,7 +6,32 @@ from openai import OpenAI
 from datetime import datetime
 import xml.etree.ElementTree as ET
 from email.utils import formatdate
+import re  # 记得加这行，用于正则表达式处理
 
+def clean_text_for_tts(text):
+    """
+    清洗文案，去掉 Markdown 符号和不适合朗读的字符
+    """
+    # 1. 去掉 **加粗** 的符号
+    text = text.replace("**", "")
+    text = text.replace("__", "")
+    
+    # 2. 去掉 ## 标题符号
+    text = text.replace("##", "")
+    text = text.replace("###", "")
+    
+    # 3. 去掉链接 [链接文字](url) -> 只保留 链接文字
+    # 正则表达式：去掉 []() 结构
+    text = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', text)
+    
+    # 4. 去掉其他 Markdown 列表符 (如 - 或 *)
+    # 这里只替换行首的列表符，避免误删文中正常的减号
+    text = re.sub(r'^\s*[-*]\s+', '', text, flags=re.MULTILINE)
+    
+    # 5. 去掉多余的空行
+    text = re.sub(r'\n\s*\n', '\n', text)
+    
+    return text
 # --- 配置区域 ---
 RSS_URLS = [
     # 1. Hacker News 中文精选 (硬核科技前沿)
@@ -67,17 +92,23 @@ def get_news_summary():
        - 资讯快讯（3分钟）：快速过一遍其他 5-6 条次要新闻，一句话点评即可。
        - 结尾（1分钟）：总结升华，推荐一个提升效率的小技巧或工具。
     3. 【语气风格】专业但不枯燥，像老罗（罗永浩）或者罗振宇那种风格，金句频出。
-    
+    4. 不要输出任何标题或Markdown格式（如 ** ## 等符号），直接输出要读的纯文本。不要包含“标题：”、“摘要：”这种标签。
     资讯素材如下：
     {news_text}
     """
     
     # 这里使用的是 DeepSeek-V3 模型，如果以后不可用了，可以换成 Qwen/Qwen2.5-7B-Instruct
-    response = client.chat.completions.create(
+     response = client.chat.completions.create(
         model="deepseek-ai/DeepSeek-V3", 
         messages=[{"role": "user", "content": prompt}]
     )
-    return response.choices[0].message.content
+    
+    raw_content = response.choices[0].message.content
+    
+    # 【新增】在这里调用清洗函数
+    clean_content = clean_text_for_tts(raw_content)
+    
+    return clean_content
 
 async def run_tts(text, filename):
     """3. 使用 Edge-TTS (免费) 转语音"""
