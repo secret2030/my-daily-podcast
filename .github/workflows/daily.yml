@@ -1,0 +1,39 @@
+name: Daily Podcast Generator
+
+on:
+  schedule:
+    # 北京时间早上 7 点 (UTC 23:00)
+    - cron: '0 23 * * *'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+
+    - name: Install dependencies
+      # 这里新增了 edge-tts
+      run: |
+        pip install requests feedparser openai edge-tts
+
+    - name: Run script
+      env:
+        # 这里改成了 SILICON_KEY
+        SILICON_KEY: ${{ secrets.SILICON_KEY }}
+      run: python main.py
+
+    - name: Commit and Push changes
+      run: |
+        git config --global user.name "GitHub Action"
+        git config --global user.email "action@github.com"
+        git add .
+        git commit -m "Auto-generate podcast episode" || echo "No changes to commit"
+        git push
