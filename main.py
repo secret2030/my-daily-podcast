@@ -9,8 +9,23 @@ from email.utils import formatdate
 
 # --- 配置区域 ---
 RSS_URLS = [
-    "https://www.36kr.com/feed",
+    # 1. Hacker News 中文精选 (硬核科技前沿)
+    "https://feeds.feedburner.com/hackernews-zh",
+    
+    # 2. 阮一峰的网络日志 (高质量科技/人文/工具)
+    "http://www.ruanyifeng.com/blog/atom.xml",
+    
+    # 3. 少数派 - 派读 (高效工作/新玩意)
     "https://sspai.com/feed",
+    
+    # 4. 【关键】Product Hunt (每日全球最新发布的新产品)
+    "https://rsshub.app/producthunt/today",
+    
+    # 5. 如果你非要 X 的内容，可以用 RSSHub 的镜像 (可能不稳定)
+    # 比如抓取 Elon Musk 的推文：
+    "https://rsshub.app/twitter/user/elonmusk", 
+    # 建议替换为 "即刻" 的科技圈热榜 (国内平替版 X，资讯很快)
+    "https://rsshub.app/jike/topic/553870e8e4b0cafb0a1cba80", 
 ]
 PODCAST_NAME = "我的车载早报"
 # 记得修改下面的用户名！
@@ -29,7 +44,7 @@ def get_news_summary():
     for url in RSS_URLS:
         try:
             feed = feedparser.parse(url)
-            for entry in feed.entries[:2]: # 每个源取前2条
+            for entry in feed.entries[:6]: # 每个源取前6条
                 clean_summary = entry.summary.replace('<p>', '').replace('</p>', '')[:150]
                 articles.append(f"标题：{entry.title}\n内容：{clean_summary}")
         except Exception as e:
@@ -41,14 +56,19 @@ def get_news_summary():
     """2. 让 DeepSeek/Qwen 写稿"""
     print("正在思考文案...")
     prompt = f"""
-    你是一位专业的早间新闻播客主持人。请根据以下资讯写一段口语化的播报稿。
-    要求：
-    1. 语气自然、流畅，不要有'下面是第一条新闻'这种机械的词。
-    2. 对新闻进行简单的串联和点评。
-    3. 总长度控制在 600 字左右。
-    4. 不要输出任何标题或Markdown格式，直接输出要读的纯文本。
+    你是一位深度科技评论员，正在录制一期名为《前沿观察》的播客节目。
     
-    资讯内容：
+    要求：
+    1. 【时长控制】请生成一篇长约 3000 字的逐字稿（朗读时长约 10-12 分钟）。
+    2. 【结构安排】
+       - 开场（1分钟）：寒暄，快速预告今日重点。
+       - 深度解读（6分钟）：从素材中挑选 2-3 个最重磅的新闻，进行深度剖析。不要只读新闻，要分析它背后的商业逻辑、对行业的影响、以及网友的争议点。你可以适度发散，引用一些科技史的案例。
+       - 甚至可以设计两个角色（你自己扮演）：比如“有人可能会问...”，然后你来反驳，增加互动感。
+       - 资讯快讯（3分钟）：快速过一遍其他 5-6 条次要新闻，一句话点评即可。
+       - 结尾（1分钟）：总结升华，推荐一个提升效率的小技巧或工具。
+    3. 【语气风格】专业但不枯燥，像老罗（罗永浩）或者罗振宇那种风格，金句频出。
+    
+    资讯素材如下：
     {news_text}
     """
     
