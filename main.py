@@ -4,21 +4,21 @@ import feedparser
 import edge_tts
 import re
 from openai import OpenAI
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 import xml.etree.ElementTree as ET
 from email.utils import formatdate
 
 # --- 配置区域 ---
 RSS_URLS = [
+    "https://36kr.com/feed/newsflash",   # 36氪快讯 (更新快，保证早上有新内容)
+    "https://sspai.com/feed",            # 少数派
     "https://feeds.feedburner.com/hackernews-zh", # Hacker News 中文
-    "https://sspai.com/feed",      # 少数派
-    "http://www.ruanyifeng.com/blog/atom.xml", # 阮一峰
-    "https://rsshub.app/jike/topic/553870e8e4b0cafb0a1cba80", # 即刻科技圈（备用）
+    "http://www.ruanyifeng.com/blog/atom.xml",    # 阮一峰
 ]
 
-PODCAST_NAME = "我的车载早报"
+PODCAST_NAME = "明明播报"
 
-# ⚠️⚠️⚠️ 请在这里填入你的 GitHub Pages 地址 ⚠️⚠️⚠️
+# ⚠️⚠️⚠️ 请务必修改这里为你的 GitHub Pages 地址 ⚠️⚠️⚠️
 # 格式：https://<用户名>.github.io/<仓库名>
 BASE_URL = "https://secret2030.github.io/my-daily-podcast"
 
@@ -49,7 +49,7 @@ def get_news_summary():
     for url in RSS_URLS:
         try:
             feed = feedparser.parse(url)
-            # 每个源多取几条
+            # 每个源取前 3 条
             for entry in feed.entries[:3]: 
                 # 清理 HTML 标签
                 summary = entry.summary if hasattr(entry, 'summary') else ""
@@ -67,7 +67,7 @@ def get_news_summary():
     """2. 让 DeepSeek 写深度长文"""
     print("正在生成长文案...")
     prompt = f"""
-    你是一位深度科技评论员，正在录制一期名为《前沿观察》的播客节目。
+    你是一位深度科技评论员，正在录制一期名为《明明播报》的播客节目。
     
     要求：
     1. 【时长控制】请生成一篇约 2500 字的逐字稿（朗读时长约 10 分钟）。
@@ -97,7 +97,7 @@ def get_news_summary():
 async def run_tts(text, filename):
     """3. 使用 Edge-TTS 转语音"""
     print("正在生成语音...")
-    # 使用更有磁性的男声
+    # 使用更有磁性的男声 zh-CN-YunjianNeural
     communicate = edge_tts.Communicate(text, "zh-CN-YunjianNeural")
     await communicate.save(filename)
 
@@ -123,8 +123,10 @@ def update_rss_feed(audio_filename, title, pub_date):
     enclosure = ET.SubElement(item, "enclosure")
     enclosure.set("url", f"{BASE_URL}/{audio_filename}")
     enclosure.set("type", "audio/mpeg")
+    # 预估文件大小 10MB
     enclosure.set("length", "10000000") 
 
+    # 插入到最前面
     channel.insert(3, item)
     
     # 保留最近 5 期
@@ -135,9 +137,13 @@ def update_rss_feed(audio_filename, title, pub_date):
     tree.write(rss_file, encoding="UTF-8", xml_declaration=True)
 
 if __name__ == "__main__":
-    today = datetime.now()
-    date_str = today.strftime("%Y-%m-%d")
+    # 【修复】强制使用北京时间 (UTC+8)
+    beijing_time = datetime.now(timezone.utc) + timedelta(hours=8)
+    date_str = beijing_time.strftime("%Y-%m-%d")
+    
     filename = f"episode_{date_str}.mp3"
+    
+    print(f"开始任务，当前北京时间：{beijing_time}")
     
     # 执行流程
     script = get_news_summary()
@@ -145,5 +151,6 @@ if __name__ == "__main__":
     
     asyncio.run(run_tts(script, filename))
     
-    update_rss_feed(filename, f"{date_str} 科技早报", today)
+    # 更新 RSS 时也传入北京时间
+    update_rss_feed(filename, f"{date_str} 科技早报", beijing_time)
     print("全部完成！")
