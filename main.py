@@ -10,17 +10,22 @@ from email.utils import formatdate
 
 # --- 配置区域 ---
 RSS_URLS = [
-    "https://36kr.com/feed/newsflash",   # 36氪快讯 (更新快，保证早上有新内容)
-    "https://sspai.com/feed",            # 少数派
+    "https://36kr.com/feed/newsflash",            # 36氪快讯
+    "https://sspai.com/feed",                     # 少数派
     "https://feeds.feedburner.com/hackernews-zh", # Hacker News 中文
     "http://www.ruanyifeng.com/blog/atom.xml",    # 阮一峰
 ]
 
-PODCAST_NAME = "明明播报"
+# 【修改】这里改成了你想要的新名字
+PODCAST_NAME = "你好AI"
 
 # ⚠️⚠️⚠️ 请务必修改这里为你的 GitHub Pages 地址 ⚠️⚠️⚠️
-# 格式：https://<用户名>.github.io/<仓库名>
 BASE_URL = "https://secret2030.github.io/my-daily-podcast"
+
+# 设定节目时长目标 (分钟)
+TARGET_DURATION_MINUTES = 12
+# 设定中文语速 (字/分钟)
+WORDS_PER_MINUTE = 250 
 
 # 使用 SiliconFlow (兼容 OpenAI SDK)
 client = OpenAI(
@@ -29,17 +34,14 @@ client = OpenAI(
 )
 
 def clean_text_for_tts(text):
-    """清洗文案，去掉 Markdown 符号"""
-    # 去掉加粗
+    """双重清洗：防止 AI 哪怕输出了 Markdown 也能兜底"""
     text = text.replace("**", "").replace("__", "")
-    # 去掉标题符号
     text = text.replace("##", "").replace("###", "")
-    # 去掉链接
     text = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', text)
-    # 去掉列表符
     text = re.sub(r'^\s*[-*]\s+', '', text, flags=re.MULTILINE)
-    # 去掉多余空行
     text = re.sub(r'\n\s*\n', '\n', text)
+    # 去掉可能存在的 Speaker 标签 (如 "老罗: ")
+    text = re.sub(r'^[^：\n]+：', '', text, flags=re.MULTILINE) 
     return text
 
 def get_news_summary():
@@ -49,12 +51,10 @@ def get_news_summary():
     for url in RSS_URLS:
         try:
             feed = feedparser.parse(url)
-            # 每个源取前 3 条
             for entry in feed.entries[:3]: 
-                # 清理 HTML 标签
                 summary = entry.summary if hasattr(entry, 'summary') else ""
-                clean_summary = re.sub(r'<[^>]+>', '', summary)[:200]
-                articles.append(f"标题：{entry.title}\n内容：{clean_summary}")
+                clean_summary = re.sub(r'<[^>]+>', '', summary)[:250] 
+                articles.append(f"《{entry.title}》\n内容：{clean_summary}")
         except Exception as e:
             print(f"源 {url} 抓取失败: {e}")
             continue
@@ -64,29 +64,46 @@ def get_news_summary():
 
     news_text = "\n\n".join(articles)
     
-    """2. 让 DeepSeek 写深度长文"""
-    print("正在生成长文案...")
-    prompt = f"""
-    你是一位深度科技评论员，正在录制一期名为《明明播报》的播客节目。
+    """2. 构建高级提示词 (Zenfeed Style)"""
+    print("正在构建高级提示词并生成文案...")
     
-    要求：
-    1. 【时长控制】请生成一篇约 2500 字的逐字稿（朗读时长约 10 分钟）。
-    2. 【内容结构】
-       - 开场：热情寒暄，快速预告今日重点。
-       - 深度解读：从素材中挑选 2-3 个最重磅的新闻，进行深度剖析。不要只读新闻，要分析商业逻辑、行业影响。
-       - 资讯快讯：快速过一遍其他次要新闻。
-       - 结尾：总结升华，推荐一个提升效率的小技巧。
-    3. 【语气风格】像罗永浩或罗振宇的风格，金句频出，口语化。
-    4. 【绝对禁止】不要输出任何 Markdown 符号（如 **、##），不要输出“标题：”标签，直接输出纯文本。
+    estimated_words = TARGET_DURATION_MINUTES * WORDS_PER_MINUTE
     
-    资讯素材：
-    {news_text}
-    """
+    prompt_segments = []
+    
+    # 角色定义
+    prompt_segments.append("你是一位名为【老罗】的资深科技评论员，正在录制一期名为《你好AI》的单人脱口秀播客。")
+    
+    # 任务目标
+    prompt_segments.append(f"请将以下资讯素材，改写成一份深度播客逐字稿。目标长度约为 {estimated_words} 字，以适应约 {TARGET_DURATION_MINUTES} 分钟的朗读时长。")
+    
+    # 详细内容指令
+    prompt_segments.append("""
+    内容结构要求：
+    - 开场（约1分钟）：必须包含热情、自然的寒暄，预告今日看点。欢迎大家收听《你好AI》。
+    - 核心深读（约8分钟）：从素材中挑选 2-3 个最具争议或深度的科技新闻，进行辛辣点评。要分析商业逻辑、吐槽行业乱象，不要只读新闻稿。多用“这就好比...”、“大家想一想...”这样的口语。
+    - 资讯串烧（约2分钟）：快速过一遍其他次要新闻。
+    - 结尾（约1分钟）：总结升华，并推荐一个提升效率的小技巧，最后礼貌道别。
+    """)
+    
+    # 负面约束 (Zenfeed Style)
+    prompt_segments.append("格式强制要求 (Format Constraints):")
+    prompt_segments.append("- The output MUST be raw spoken text only. (只输出要读的纯文本)")
+    prompt_segments.append("- Do NOT include speaker names (e.g., '主持人:', '老罗:'). (不要包含说话人标签)")
+    prompt_segments.append("- Do NOT include formatting symbols like **, ##, or []. (严禁使用 Markdown)")
+    prompt_segments.append("- Do NOT include stage directions (e.g., [Music plays]). (不要包含旁白动作)")
+    prompt_segments.append("- Do NOT use title labels like '标题：'.")
+    
+    # 注入素材
+    prompt_segments.append("现在，基于以下素材开始创作：")
+    prompt_segments.append(news_text)
+    
+    final_prompt = "\n\n".join(prompt_segments)
     
     try:
         response = client.chat.completions.create(
             model="deepseek-ai/DeepSeek-V3", 
-            messages=[{"role": "user", "content": prompt}]
+            messages=[{"role": "user", "content": final_prompt}]
         )
         raw_content = response.choices[0].message.content
         return clean_text_for_tts(raw_content)
@@ -97,7 +114,7 @@ def get_news_summary():
 async def run_tts(text, filename):
     """3. 使用 Edge-TTS 转语音"""
     print("正在生成语音...")
-    # 使用更有磁性的男声 zh-CN-YunjianNeural
+    # zh-CN-YunjianNeural: 稳重磁性男声
     communicate = edge_tts.Communicate(text, "zh-CN-YunjianNeural")
     await communicate.save(filename)
 
@@ -116,6 +133,11 @@ def update_rss_feed(audio_filename, title, pub_date):
         tree = ET.parse(rss_file)
         root = tree.getroot()
         channel = root.find("channel")
+        
+        # 【新增】强制更新频道名称（防止改了名字不生效）
+        channel_title = channel.find("title")
+        if channel_title is not None:
+            channel_title.text = PODCAST_NAME
 
     item = ET.Element("item")
     ET.SubElement(item, "title").text = title
@@ -123,13 +145,10 @@ def update_rss_feed(audio_filename, title, pub_date):
     enclosure = ET.SubElement(item, "enclosure")
     enclosure.set("url", f"{BASE_URL}/{audio_filename}")
     enclosure.set("type", "audio/mpeg")
-    # 预估文件大小 10MB
-    enclosure.set("length", "10000000") 
+    enclosure.set("length", "12582912") 
 
-    # 插入到最前面
     channel.insert(3, item)
     
-    # 保留最近 5 期
     items = channel.findall("item")
     if len(items) > 5:
         channel.remove(items[-1])
@@ -137,20 +156,17 @@ def update_rss_feed(audio_filename, title, pub_date):
     tree.write(rss_file, encoding="UTF-8", xml_declaration=True)
 
 if __name__ == "__main__":
-    # 【修复】强制使用北京时间 (UTC+8)
+    # 强制北京时间
     beijing_time = datetime.now(timezone.utc) + timedelta(hours=8)
     date_str = beijing_time.strftime("%Y-%m-%d")
     
     filename = f"episode_{date_str}.mp3"
+    print(f"开始执行任务，北京时间：{beijing_time}")
     
-    print(f"开始任务，当前北京时间：{beijing_time}")
-    
-    # 执行流程
     script = get_news_summary()
-    print(f"文案准备就绪，长度：{len(script)} 字")
+    print(f"文案生成完毕，字数：{len(script)}")
     
     asyncio.run(run_tts(script, filename))
     
-    # 更新 RSS 时也传入北京时间
-    update_rss_feed(filename, f"{date_str} 科技早报", beijing_time)
+    update_rss_feed(filename, f"{date_str} 你好AI 早报", beijing_time)
     print("全部完成！")
