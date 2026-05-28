@@ -6,6 +6,9 @@ on:
     - cron: '0 23 * * *'
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -20,13 +23,11 @@ jobs:
         python-version: '3.9'
 
     - name: Install dependencies
-      # 这里新增了 edge-tts
       run: |
         pip install requests feedparser openai edge-tts
 
     - name: Run script
       env:
-        # 这里改成了 SILICON_KEY
         SILICON_KEY: ${{ secrets.SILICON_KEY }}
       run: python main.py
 
