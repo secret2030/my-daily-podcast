@@ -10,10 +10,10 @@ from email.utils import formatdate
 
 # --- 配置区域 ---
 RSS_URLS = [
-    "https://36kr.com/feed/newsflash",            # 36氪快讯
-    "https://sspai.com/feed",                     # 少数派
-    "https://feeds.feedburner.com/hackernews-zh", # Hacker News 中文
-    "http://www.ruanyifeng.com/blog/atom.xml",    # 阮一峰
+    "https://hnrss.org/frontpage?count=5",        # Hacker News 头条
+    "https://feeds.feedburner.com/TechCrunch",    # TechCrunch
+    "https://www.theverge.com/rss/index.xml",     # The Verge
+    "https://www.qbitai.com/feed",                # 量子位
 ]
 
 # 【修改】这里改成了你想要的新名字
@@ -23,7 +23,7 @@ PODCAST_NAME = "你好AI"
 BASE_URL = "https://secret2030.github.io/my-daily-podcast"
 
 # 设定节目时长目标 (分钟)
-TARGET_DURATION_MINUTES = 12
+TARGET_DURATION_MINUTES = 6
 # 设定中文语速 (字/分钟)
 WORDS_PER_MINUTE = 250 
 
@@ -40,8 +40,10 @@ def clean_text_for_tts(text):
     text = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', text)
     text = re.sub(r'^\s*[-*]\s+', '', text, flags=re.MULTILINE)
     text = re.sub(r'\n\s*\n', '\n', text)
-    # 去掉可能存在的 Speaker 标签 (如 "老罗: ")
+    # 去掉可能存在的 Speaker 标签
     text = re.sub(r'^[^：\n]+：', '', text, flags=re.MULTILINE) 
+    # 去掉残留的英文单词（兜底）
+    text = re.sub(r'\b[A-Za-z]{2,}\b', '', text)
     return text
 
 def get_news_summary():
@@ -71,8 +73,10 @@ def get_news_summary():
     
     prompt_segments = []
     
-    # 角色定义
-    prompt_segments.append("你是一位名为【老罗】的资深科技评论员，正在录制一期名为《你好AI》的单人脱口秀播客。")
+    # 角色定义 - 专业、沉稳但有温度的分析师
+    prompt_segments.append("你是一位名为【林深】的资深科技分析师，主持一档名为《你好AI》的每日科技播客。")
+    prompt_segments.append("你的风格是：专业、理性、有深度，但语气温和亲切，像一个懂技术的朋友在和你聊天。")
+    prompt_segments.append("你的听众是关注科技行业的从业者和爱好者，他们希望听到有见地的分析，而非情绪化的吐槽。")
     
     # 任务目标
     prompt_segments.append(f"请将以下资讯素材，改写成一份深度播客逐字稿。目标长度约为 {estimated_words} 字，以适应约 {TARGET_DURATION_MINUTES} 分钟的朗读时长。")
@@ -80,16 +84,17 @@ def get_news_summary():
     # 详细内容指令
     prompt_segments.append("""
     内容结构要求：
-    - 开场（约1分钟）：必须包含热情、自然的寒暄，预告今日看点。欢迎大家收听《你好AI》。
-    - 核心深读（约8分钟）：从素材中挑选 2-3 个最具争议或深度的科技新闻，进行辛辣点评。要分析商业逻辑、吐槽行业乱象，不要只读新闻稿。多用“这就好比...”、“大家想一想...”这样的口语。
-    - 资讯串烧（约2分钟）：快速过一遍其他次要新闻。
-    - 结尾（约1分钟）：总结升华，并推荐一个提升效率的小技巧，最后礼貌道别。
+    - 开场（约1分钟）：用自然、有温度的方式寒暄，简要预告今日几个核心话题。欢迎听众来到《你好AI》。
+    - 核心深读（约8分钟）：从素材中挑选 2-3 个最重要的科技新闻，深入分析其背后的技术原理、产业影响和未来趋势。要讲清楚「为什么重要」和「意味着什么」，而非简单复述新闻。多用"我们来看一下..."、"这意味着..."、"值得关注的是..."这类平和但有引导力的表达。
+    - 资讯速览（约2分钟）：简洁带过其他值得注意的新闻，每条一两句话点出核心信息即可。
+    - 结尾（约1分钟）：对今天的科技图景做简短总结，分享一个与主题相关的思考角度，最后温馨道别。
     """)
     
     # 负面约束 (Zenfeed Style)
     prompt_segments.append("格式强制要求 (Format Constraints):")
     prompt_segments.append("- The output MUST be raw spoken text only. (只输出要读的纯文本)")
-    prompt_segments.append("- Do NOT include speaker names (e.g., '主持人:', '老罗:'). (不要包含说话人标签)")
+    prompt_segments.append("- Do NOT include speaker names (e.g., '主持人:', '林深:'). (不要包含说话人标签)")
+    prompt_segments.append("- Do NOT include any English words or phrases - translate everything to Chinese. (不要夹杂英文，全部翻译为中文)")
     prompt_segments.append("- Do NOT include formatting symbols like **, ##, or []. (严禁使用 Markdown)")
     prompt_segments.append("- Do NOT include stage directions (e.g., [Music plays]). (不要包含旁白动作)")
     prompt_segments.append("- Do NOT use title labels like '标题：'.")
@@ -102,7 +107,7 @@ def get_news_summary():
     
     try:
         response = client.chat.completions.create(
-            model="deepseek-ai/DeepSeek-V3", 
+            model="deepseek-ai/DeepSeek-V4-Flash", 
             messages=[{"role": "user", "content": final_prompt}]
         )
         raw_content = response.choices[0].message.content
@@ -114,8 +119,8 @@ def get_news_summary():
 async def run_tts(text, filename):
     """3. 使用 Edge-TTS 转语音"""
     print("正在生成语音...")
-    # zh-CN-YunjianNeural: 稳重磁性男声
-    communicate = edge_tts.Communicate(text, "zh-CN-YunjianNeural")
+    # zh-CN-YunyangNeural: 专业新闻播音男声，沉稳清晰、有温度
+    communicate = edge_tts.Communicate(text, "zh-CN-YunyangNeural")
     await communicate.save(filename)
 
 def update_rss_feed(audio_filename, title, pub_date):
